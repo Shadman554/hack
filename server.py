@@ -187,11 +187,6 @@ def collect_fallback():
     data = request.get_json(force=True)
     client_ip = get_client_ip()
 
-@app.route('/collect-fallback', methods=['POST'])
-def collect_fallback():
-    data = request.get_json(force=True)
-    client_ip = get_client_ip()
-
     # Get IP geolocation from ipinfo.io
     ipinfo_url = f'https://ipinfo.io/{client_ip}/json'
     try:
@@ -213,45 +208,6 @@ def collect_fallback():
     log_data(log_entry)
     return jsonify({'status': 'success'})
 
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-
-    if latitude is None or longitude is None:
-        return jsonify({'error': 'Missing latitude or longitude'}), 400
-
-    client_ip = get_client_ip()
-
-    # Rate limit Nominatim API calls
-    with nominatim_lock:
-        now = time.time()
-        elapsed = now - last_nominatim_call
-        if elapsed < 1.0:
-            time.sleep(1.0 - elapsed)
-        last_nominatim_call = time.time()
-
-    # Reverse geocode using OpenStreetMap Nominatim API
-    nominatim_url = f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={latitude}&lon={longitude}'
-    headers = {'User-Agent': 'Mozilla/5.0 (compatible; LocationCollector/1.0)'}
-    try:
-        resp = requests.get(nominatim_url, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            nominatim_data = resp.json()
-            address = nominatim_data.get('display_name', 'Unknown')
-        else:
-            address = 'Unknown'
-    except Exception:
-        address = 'Unknown'
-
-    log_entry = {
-        'type': 'gps',
-        'latitude': latitude,
-        'longitude': longitude,
-        'address': address,
-        'ip': client_ip,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    }
-    log_data(log_entry)
-    return jsonify({'status': 'success'})
 
     try:
         resp = requests.get(ipinfo_url, timeout=5)
@@ -393,3 +349,9 @@ def collect_fallback():
 
     log_data(log_entry)
     return jsonify({'status': 'success'})
+
+
+if __name__ == '__main__':
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
