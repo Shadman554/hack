@@ -58,6 +58,11 @@ def get_client_ip():
     return request.remote_addr
 
 
+@app.route('/', methods=['GET'])
+def index():
+    return jsonify({'status': 'ok'}), 200
+
+
 @app.route('/collect', methods=['POST'])
 def collect():
     global last_nominatim_call
