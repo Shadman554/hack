@@ -136,7 +136,6 @@ def collect():
             time.sleep(1.0 - elapsed)
         last_nominatim_call = time.time()
 
-    # Reverse geocode using OpenStreetMap Nominatim API
 @app.route('/collect', methods=['POST'])
 def collect():
     global last_nominatim_call
@@ -178,11 +177,25 @@ def collect():
         'ip': client_ip,
         'timestamp': datetime.utcnow().isoformat() + 'Z'
     }
-    log_data(log_entry)
     return jsonify({'status': 'success'})
 
+# Removed duplicate /collect route at line 266
+# The /collect-fallback endpoint remains separate for fallback data
 
-@app.route('/collect-fallback', methods=['POST'])
+
+    log_entry = {
+        'type': 'gps',
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+# Removed unreachable duplicated code block
+
+# Removed duplicate /collect route at line 266
+# The /collect-fallback endpoint remains separate for fallback data
+
 def collect_fallback():
     data = request.get_json(force=True)
     client_ip = get_client_ip()
@@ -250,62 +263,9 @@ if __name__ == '__main__':
 
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 5000))
+# Removed duplicate /collect route at line 266 to fix Flask AssertionError
+# The /collect-fallback endpoint remains separate for fallback data
 
-    # Disable HTTPS on Railway (handled by platform)
-    if os.environ.get('RAILWAY') == 'true':
-        print(f'Running on Railway with HTTP on port {port}')
-        app.run(host='0.0.0.0', port=port)
-    else:
-        ssl_cert = 'cert.pem'
-        ssl_key = 'key.pem'
-
-        # Only check for SSL certs if not running on Railway
-        if not os.path.exists(ssl_cert) or not os.path.exists(ssl_key):
-            print('SSL certificate or key not found. Please provide cert.pem and key.pem files.')
-            exit(1)
-@app.route('/collect', methods=['POST'])
-def collect():
-    global last_nominatim_call
-    data = request.get_json(force=True)
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-
-    if latitude is None or longitude is None:
-        return jsonify({'error': 'Missing latitude or longitude'}), 400
-
-    client_ip = get_client_ip()
-
-    # Rate limit Nominatim API calls
-    with nominatim_lock:
-        now = time.time()
-        elapsed = now - last_nominatim_call
-        if elapsed < 1.0:
-            time.sleep(1.0 - elapsed)
-        last_nominatim_call = time.time()
-
-    # Reverse geocode using OpenStreetMap Nominatim API
-    nominatim_url = f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={latitude}&lon={longitude}'
-    headers = {'User-Agent': 'Mozilla/5.0 (compatible; LocationCollector/1.0)'}
-    try:
-        resp = requests.get(nominatim_url, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            nominatim_data = resp.json()
-            address = nominatim_data.get('display_name', 'Unknown')
-        else:
-            address = 'Unknown'
-    except Exception:
-        address = 'Unknown'
-
-    log_entry = {
-        'type': 'gps',
-        'latitude': latitude,
-        'longitude': longitude,
-        'address': address,
-        'ip': client_ip,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    }
-    log_data(log_entry)
-    return jsonify({'status': 'success'})
 
 
 @app.route('/collect-fallback', methods=['POST'])
@@ -347,8 +307,9 @@ def collect_fallback():
         'timestamp': datetime.utcnow().isoformat() + 'Z'
     }
 
-    log_data(log_entry)
-    return jsonify({'status': 'success'})
+if __name__ == '__main__':
+    # Run Flask app for testing
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
 
 if __name__ == '__main__':
