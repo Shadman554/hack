@@ -60,3 +60,22 @@ All collected data is logged to `location_logs.txt` with timestamps.
 ## Disclaimer
 
 This project is for authorized security testing only. Unauthorized use is illegal.
+
+## PostgreSQL Setup
+
+1. Create a PostgreSQL database on Railway or your preferred provider.
+2. Set the `DATABASE_URL` environment variable in Railway to your database connection string (e.g., `postgresql://user:password@host:port/dbname`).
+3. The server will automatically create the required table `location_logs` on startup.
+
+## Railway Deployment Notes
+
+- Set environment variables `RAILWAY=true` and `DATABASE_URL` in Railway project settings.
+- Do NOT provide SSL certificates; Railway handles HTTPS termination.
+- The server uses the dynamic port Railway assigns via the `PORT` environment variable.
+- Run the server with:
+
+```bash
+python server.py
+```
+
+- The phishing page endpoints use relative URLs and require no modification.

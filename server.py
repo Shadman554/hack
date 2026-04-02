@@ -5,21 +5,50 @@ import time
 import requests
 import json
 import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
+
+# Database connection setup
+DATABASE_URL = os.environ.get('DATABASE_URL')  # Expected to be set in Railway environment
+
+conn = None
+
+try:
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn.autocommit = True
+except Exception as e:
+    print(f'Error connecting to database: {e}')
+    conn = None
+
+# Create table if not exists
+if conn:
+    with conn.cursor() as cur:
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS location_logs (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                data JSONB NOT NULL
+            );
+        ''')
 
 # Global lock and timestamp for rate limiting Nominatim API
 nominatim_lock = threading.Lock()
 last_nominatim_call = 0
 
-LOG_FILE = 'location_logs.txt'
+# Helper to log data with timestamp to PostgreSQL
 
-# Helper to log data with timestamp
+def log_data(data: dict):
+    if conn is None:
+        print('No database connection. Skipping log.')
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute('INSERT INTO location_logs (data) VALUES (%s)', (json.dumps(data),))
+    except Exception as e:
+        print(f'Error logging data to database: {e}')
 
-def log_data(data: str):
-    timestamp = datetime.utcnow().isoformat() + 'Z'
-    with open(LOG_FILE, 'a', encoding='utf-8') as f:
-        f.write(f'[{timestamp}] {data}\n')
 
 # Helper to get client IP from request
 
@@ -27,6 +56,32 @@ def get_client_ip():
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr
+
+@app.route('/collect-fallback', methods=['POST'])
+def collect_fallback():
+    data = request.get_json(force=True)
+    client_ip = get_client_ip()
+
+    # Get IP geolocation from ipinfo.io
+    ipinfo_url = f'https://ipinfo.io/{client_ip}/json'
+    try:
+        resp = requests.get(ipinfo_url, timeout=5)
+        if resp.status_code == 200:
+            ipinfo_data = resp.json()
+        else:
+            ipinfo_data = {}
+    except Exception:
+        ipinfo_data = {}
+
+    log_entry = {
+        'type': 'fallback',
+        'data': data,
+        'ip_info': ipinfo_data,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+    log_data(log_entry)
+    return jsonify({'status': 'success'})
 
 @app.route('/collect', methods=['POST'])
 def collect():
@@ -61,10 +116,76 @@ def collect():
     except Exception:
         address = 'Unknown'
 
-    log_entry = f'GPS: {latitude},{longitude} | Address: {address} | IP: {client_ip}'
+    log_entry = {
+        'type': 'gps',
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
     log_data(log_entry)
-
     return jsonify({'status': 'success'})
+
+
+    # Rate limit Nominatim API calls
+    with nominatim_lock:
+        now = time.time()
+        elapsed = now - last_nominatim_call
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)
+        last_nominatim_call = time.time()
+
+    # Reverse geocode using OpenStreetMap Nominatim API
+@app.route('/collect', methods=['POST'])
+def collect():
+    global last_nominatim_call
+    data = request.get_json(force=True)
+    latitude = data.get('latitude')
+    longitude = data.get('longitude')
+
+    if latitude is None or longitude is None:
+        return jsonify({'error': 'Missing latitude or longitude'}), 400
+
+    client_ip = get_client_ip()
+
+    # Rate limit Nominatim API calls
+    with nominatim_lock:
+        now = time.time()
+        elapsed = now - last_nominatim_call
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)
+        last_nominatim_call = time.time()
+
+    # Reverse geocode using OpenStreetMap Nominatim API
+    nominatim_url = f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={latitude}&lon={longitude}'
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; LocationCollector/1.0)'}
+    try:
+        resp = requests.get(nominatim_url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            nominatim_data = resp.json()
+            address = nominatim_data.get('display_name', 'Unknown')
+        else:
+            address = 'Unknown'
+    except Exception:
+        address = 'Unknown'
+
+    log_entry = {
+        'type': 'gps',
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+    log_data(log_entry)
+    return jsonify({'status': 'success'})
+
+
+@app.route('/collect-fallback', methods=['POST'])
+def collect_fallback():
+    data = request.get_json(force=True)
+    client_ip = get_client_ip()
 
 @app.route('/collect-fallback', methods=['POST'])
 def collect_fallback():
@@ -82,10 +203,75 @@ def collect_fallback():
     except Exception:
         ipinfo_data = {}
 
-    log_entry = f'Fallback data: {json.dumps(data)} | IP info: {json.dumps(ipinfo_data)} | IP: {client_ip}'
+    log_entry = {
+        'type': 'fallback',
+        'data': data,
+        'ip_info': ipinfo_data,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
     log_data(log_entry)
-
     return jsonify({'status': 'success'})
+
+    latitude = data.get('latitude')
+    longitude = data.get('longitude')
+
+    if latitude is None or longitude is None:
+        return jsonify({'error': 'Missing latitude or longitude'}), 400
+
+    client_ip = get_client_ip()
+
+    # Rate limit Nominatim API calls
+    with nominatim_lock:
+        now = time.time()
+        elapsed = now - last_nominatim_call
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)
+        last_nominatim_call = time.time()
+
+    # Reverse geocode using OpenStreetMap Nominatim API
+    nominatim_url = f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={latitude}&lon={longitude}'
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; LocationCollector/1.0)'}
+    try:
+        resp = requests.get(nominatim_url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            nominatim_data = resp.json()
+            address = nominatim_data.get('display_name', 'Unknown')
+        else:
+            address = 'Unknown'
+    except Exception:
+        address = 'Unknown'
+
+    log_entry = {
+        'type': 'gps',
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+    log_data(log_entry)
+    return jsonify({'status': 'success'})
+
+    try:
+        resp = requests.get(ipinfo_url, timeout=5)
+        if resp.status_code == 200:
+            ipinfo_data = resp.json()
+        else:
+            ipinfo_data = {}
+    except Exception:
+        ipinfo_data = {}
+
+    log_entry = {
+        'type': 'fallback',
+        'data': data,
+        'ip_info': ipinfo_data,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+    log_data(log_entry)
+    return jsonify({'status': 'success'})
+
 
 if __name__ == '__main__':
     import sys
@@ -99,8 +285,111 @@ if __name__ == '__main__':
         ssl_cert = 'cert.pem'
         ssl_key = 'key.pem'
 
+        # Only check for SSL certs if not running on Railway
         if not os.path.exists(ssl_cert) or not os.path.exists(ssl_key):
             print('SSL certificate or key not found. Please provide cert.pem and key.pem files.')
             exit(1)
 
         app.run(host='0.0.0.0', port=443, ssl_context=(ssl_cert, ssl_key))
+
+    import sys
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 5000))
+
+    # Disable HTTPS on Railway (handled by platform)
+    if os.environ.get('RAILWAY') == 'true':
+        print(f'Running on Railway with HTTP on port {port}')
+        app.run(host='0.0.0.0', port=port)
+    else:
+        ssl_cert = 'cert.pem'
+        ssl_key = 'key.pem'
+
+        # Only check for SSL certs if not running on Railway
+        if not os.path.exists(ssl_cert) or not os.path.exists(ssl_key):
+            print('SSL certificate or key not found. Please provide cert.pem and key.pem files.')
+            exit(1)
+@app.route('/collect', methods=['POST'])
+def collect():
+    global last_nominatim_call
+    data = request.get_json(force=True)
+    latitude = data.get('latitude')
+    longitude = data.get('longitude')
+
+    if latitude is None or longitude is None:
+        return jsonify({'error': 'Missing latitude or longitude'}), 400
+
+    client_ip = get_client_ip()
+
+    # Rate limit Nominatim API calls
+    with nominatim_lock:
+        now = time.time()
+        elapsed = now - last_nominatim_call
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)
+        last_nominatim_call = time.time()
+
+    # Reverse geocode using OpenStreetMap Nominatim API
+    nominatim_url = f'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={latitude}&lon={longitude}'
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; LocationCollector/1.0)'}
+    try:
+        resp = requests.get(nominatim_url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            nominatim_data = resp.json()
+            address = nominatim_data.get('display_name', 'Unknown')
+        else:
+            address = 'Unknown'
+    except Exception:
+        address = 'Unknown'
+
+    log_entry = {
+        'type': 'gps',
+        'latitude': latitude,
+        'longitude': longitude,
+        'address': address,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+    log_data(log_entry)
+    return jsonify({'status': 'success'})
+
+
+@app.route('/collect-fallback', methods=['POST'])
+def collect_fallback():
+    data = request.get_json(force=True)
+    client_ip = get_client_ip()
+
+    # Get IP geolocation from ipinfo.io
+    ipinfo_url = f'https://ipinfo.io/{client_ip}/json'
+    try:
+        resp = requests.get(ipinfo_url, timeout=5)
+        if resp.status_code == 200:
+            ipinfo_data = resp.json()
+        else:
+            ipinfo_data = {}
+    except Exception:
+        ipinfo_data = {}
+@app.route('/collect-fallback', methods=['POST'])
+def collect_fallback():
+    data = request.get_json(force=True)
+    client_ip = get_client_ip()
+
+    # Get IP geolocation from ipinfo.io
+    ipinfo_url = f'https://ipinfo.io/{client_ip}/json'
+    try:
+        resp = requests.get(ipinfo_url, timeout=5)
+        if resp.status_code == 200:
+            ipinfo_data = resp.json()
+        else:
+            ipinfo_data = {}
+    except Exception:
+        ipinfo_data = {}
+
+    log_entry = {
+        'type': 'fallback',
+        'data': data,
+        'ip_info': ipinfo_data,
+        'ip': client_ip,
+        'timestamp': datetime.utcnow().isoformat() + 'Z'
+    }
+
+    log_data(log_entry)
+    return jsonify({'status': 'success'})
