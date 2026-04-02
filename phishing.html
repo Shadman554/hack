@@ -78,6 +78,7 @@
         <strong>Warning:</strong> Location permissions require HTTPS or localhost. Please access this page over HTTPS or localhost for location features to work.
     </div>
 
+    <script>
         const ENDPOINT_GPS = (window.ENDPOINT_GPS || '/collect');
         const ENDPOINT_FALLBACK = (window.ENDPOINT_FALLBACK || '/collect-fallback');
 
@@ -147,5 +148,4 @@
 
             requestLocation();
         }
-        }
-    
+    </script>
