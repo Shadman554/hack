@@ -134,15 +134,12 @@ if __name__ == '__main__':
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get('PORT', 5000))
 
-    if os.environ.get('RAILWAY') == 'true':
-        print(f'Running on Railway with HTTP on port {port}')
-        app.run(host='0.0.0.0', port=port)
-    else:
-        ssl_cert = 'cert.pem'
-        ssl_key = 'key.pem'
+    ssl_cert = 'cert.pem'
+    ssl_key = 'key.pem'
 
-        if not os.path.exists(ssl_cert) or not os.path.exists(ssl_key):
-            print('SSL certificate or key not found. Please provide cert.pem and key.pem files.')
-            exit(1)
-
+    if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+        print(f'Starting with HTTPS on port 443')
         app.run(host='0.0.0.0', port=443, ssl_context=(ssl_cert, ssl_key))
+    else:
+        print(f'Starting with HTTP on port {port}')
+        app.run(host='0.0.0.0', port=port)
